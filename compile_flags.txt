@@ -1,0 +1,6 @@
+-I
+./includes
+-Wall
+-pedantic
+-Wextra
+-Werror
