@@ -88,7 +88,7 @@ const char *xcb_get_event_name(int event) {
 }
 
 scwm_t *scwm_init() {
-	uint32_t values[0];
+	uint32_t values[1];
 
 	values[0] = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT
 			| XCB_EVENT_MASK_STRUCTURE_NOTIFY

@@ -6,7 +6,7 @@
 
 
 
-int main(int argc, char **argv) {
+int main(void) {
 	scwm_t *scwm = scwm_init();	
 
 	scwm_event_loop(scwm);
