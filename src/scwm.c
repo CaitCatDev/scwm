@@ -10,7 +10,8 @@ struct scwm {
 	xcb_connection_t *connection;
 	xcb_screen_t *screen;
 	xcb_window_t root;
-
+	xcb_window_t window;
+	int detail;
 };
 
 void scwm_handle_map_request(scwm_t *scwm, xcb_generic_event_t *event);
@@ -111,51 +112,51 @@ void scwm_handle_map_request(scwm_t *scwm, xcb_generic_event_t *event) {
 
 	xcb_map_window(scwm->connection, ev->window);
 
-	xcb_grab_button(scwm->connection, 1, ev->window, XCB_EVENT_MASK_BUTTON_PRESS,
-			XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC, XCB_WINDOW_NONE, 
-			XCB_CURSOR_NONE, XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY);
-
-	xcb_flush(scwm->connection);
 }
 
 void scwm_handle_button_press(scwm_t *scwm, xcb_generic_event_t *event) {
 	xcb_button_press_event_t *ev = (void *)event;
 	//Bypass unused warnings
-	printf("%d, %d\n", ev->event, scwm->root);
-	(void)scwm;
-	
+	printf("%d, %d\n", ev->child, scwm->root);
+	scwm->window = ev->child;
+	scwm->detail = ev->detail;
 	//Grab root window pointer
 	//Now we should get motion events with this window
-	xcb_grab_pointer(scwm->connection, 0, ev->event, XCB_EVENT_MASK_BUTTON_RELEASE |
+	xcb_grab_pointer(scwm->connection, 0, scwm->root, XCB_EVENT_MASK_BUTTON_RELEASE |
 			XCB_EVENT_MASK_BUTTON_MOTION | XCB_EVENT_MASK_POINTER_MOTION_HINT,
 			XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, scwm->root, XCB_NONE,
-			ev->time);
+			XCB_CURRENT_TIME);
 	
 	//Flush to server
-	xcb_flush(scwm->connection);
 }
 
 void scwm_handle_button_release(scwm_t *scwm, xcb_generic_event_t *event) {
 	xcb_button_release_event_t *ev = (void *)event;
 	
 	xcb_ungrab_pointer(scwm->connection, ev->time);
-	xcb_flush(scwm->connection);
 }
 
 void scwm_handle_motion_notify(scwm_t *scwm, xcb_generic_event_t *event) {
 	uint32_t values[2];
+	xcb_query_pointer_cookie_t ptr_cookie = xcb_query_pointer(scwm->connection, scwm->root);
+	xcb_query_pointer_reply_t *pointer = xcb_query_pointer_reply(scwm->connection, ptr_cookie, 0); 
 	xcb_motion_notify_event_t *ev = (void *)event;
-
-	printf("%d %d\n%dx%d\n%d\n", ev->root_x, ev->root_y, ev->event_x, ev->event_y, ev->event);
 	
+	printf("%d %d\n%dx%d\n%d\n", ev->root_x, ev->root_y, ev->event_x, ev->event_y, scwm->window);
+
 	values[0] = ev->root_x;
 	values[1] = ev->root_y;
-
-	xcb_configure_window(scwm->connection, ev->event, XCB_CONFIG_WINDOW_X | 
+	printf("%d:%d\n", values[0],values[1]);
+	if(scwm->detail == 1) {
+		xcb_configure_window(scwm->connection, scwm->window, XCB_CONFIG_WINDOW_X | 
 			XCB_CONFIG_WINDOW_Y, values);
+	} else if(scwm->detail == 3) {
+		xcb_configure_window(scwm->connection, scwm->window, 
+				XCB_CONFIG_WINDOW_HEIGHT | XCB_CONFIG_WINDOW_WIDTH,
+				values);
+	}
 	
 
-	xcb_flush(scwm->connection);
 }
 
 void scwm_handle_configure_request(scwm_t *scwm, xcb_generic_event_t *event) {
@@ -208,7 +209,6 @@ void scwm_handle_configure_request(scwm_t *scwm, xcb_generic_event_t *event) {
 	       ev->height);
 
         xcb_configure_window(scwm->connection, ev->window, ev->value_mask, values);
-	xcb_flush(scwm->connection);
 }
 
 scwm_t *scwm_init() {
@@ -272,5 +272,6 @@ void scwm_event_loop(scwm_t *scwm) {
 		}
 
 		scwm_free_xcb_event(event);
+		xcb_flush(scwm->connection);
 	}
 }
