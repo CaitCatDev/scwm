@@ -13,6 +13,24 @@ struct scwm {
 
 };
 
+void scwm_handle_map_request(scwm_t *scwm, xcb_generic_event_t *event);
+void scwm_handle_configure_request(scwm_t *scwm, xcb_generic_event_t *event);
+void scwm_handle_button_press(scwm_t *scwm, xcb_generic_event_t *event); 
+void scwm_handle_button_release(scwm_t *scwm, xcb_generic_event_t *event);
+
+
+typedef struct scwm_event_handlers {
+	int event;
+	void (*handler)(scwm_t *scwm, xcb_generic_event_t *event);
+} scwm_event_handlers_t;
+
+static scwm_event_handlers_t scwm_handlers[] = {
+	{ XCB_MAP_REQUEST, scwm_handle_map_request },
+	{ XCB_CONFIGURE_REQUEST, scwm_handle_configure_request }, 
+	{ XCB_BUTTON_PRESS, scwm_handle_button_press },
+	{ XCB_BUTTON_RELEASE, scwm_handle_button_release },
+};
+
 const char *xcb_get_event_name(int event) {
 	switch(event) {
 		case XCB_KEY_PRESS:
@@ -87,6 +105,80 @@ const char *xcb_get_event_name(int event) {
 		return "UNKNOWN";
 }
 
+void scwm_handle_map_request(scwm_t *scwm, xcb_generic_event_t *event) {
+	xcb_map_request_event_t *ev = (void *) event;
+
+	xcb_map_window(scwm->connection, ev->window);
+	xcb_flush(scwm->connection);
+}
+
+void scwm_handle_button_press(scwm_t *scwm, xcb_generic_event_t *event) {
+	//Bypass unused warnings
+	(void)scwm;
+	(void)event;
+
+	//TODO handle press
+}
+
+void scwm_handle_button_release(scwm_t *scwm, xcb_generic_event_t *event) {
+	(void)scwm;
+	(void)event;
+	//TODO handle release
+}
+
+void scwm_handle_configure_request(scwm_t *scwm, xcb_generic_event_t *event) {
+	uint32_t values[7];
+	uint32_t i = 0;
+	xcb_configure_request_event_t *ev = (void*) event;
+
+	if (ev->value_mask & XCB_CONFIG_WINDOW_X) {
+		values[i] = ev->x;
+		i++;
+	}
+
+        if (ev->value_mask & XCB_CONFIG_WINDOW_Y) {
+		values[i] = ev->y;
+		i++;
+	}
+
+        if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH) {
+		values[i] = ev->width; 
+		i++;
+	}
+
+        if (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT) {
+		values[i] = ev->height;
+		i++;
+	}
+        
+	if (ev->value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH) {
+		values[i] = ev->border_width;
+		i++;
+	}
+
+        if (ev->value_mask & XCB_CONFIG_WINDOW_SIBLING)  {
+		values[i] = ev->sibling;
+		i++;
+	}
+
+        if (ev->value_mask & XCB_CONFIG_WINDOW_STACK_MODE) {
+		values[i] = ev->stack_mode;
+		i++;
+	}
+	printf("Cofigure Request Window: %d\n"
+	       "\tX: %d\n"
+	       "\tY: %d\n"
+	       "\tWidth: %d\n"
+	       "\tHeight: %d\n",
+	       ev->window,
+	       ev->x, ev->y,
+	       ev->width,
+	       ev->height);
+
+        xcb_configure_window(scwm->connection, ev->window, ev->value_mask, values);
+	xcb_flush(scwm->connection);
+}
+
 scwm_t *scwm_init() {
 	uint32_t values[1];
 
@@ -112,7 +204,7 @@ scwm_t *scwm_init() {
 	//Register ourselves to listen out for events and 
 	//for the server to redirect events to us
 	xcb_change_window_attributes(scwm->connection, scwm->root, 
-								XCB_CW_EVENT_MASK, values);
+					XCB_CW_EVENT_MASK, values);
 
 	xcb_flush(scwm->connection);	
 	return scwm;
@@ -128,7 +220,14 @@ void scwm_event_loop(scwm_t *scwm) {
 		event = xcb_wait_for_event(scwm->connection);
 
 		printf("Event: %s\n", xcb_get_event_name(event->response_type & ~(0x80)));
-	
+		
+		for(size_t i = 0; i < sizeof(scwm_handlers) / sizeof(scwm_handlers[0]); ++i) {
+			if((event->response_type & ~(0x80)) == scwm_handlers[i].event &&
+					scwm_handlers[i].handler) {
+				scwm_handlers[i].handler(scwm, event);
+			}
+		}
+
 		scwm_free_xcb_event(event);
 	}
 }
