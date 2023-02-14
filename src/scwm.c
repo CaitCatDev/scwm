@@ -17,7 +17,7 @@ void scwm_handle_map_request(scwm_t *scwm, xcb_generic_event_t *event);
 void scwm_handle_configure_request(scwm_t *scwm, xcb_generic_event_t *event);
 void scwm_handle_button_press(scwm_t *scwm, xcb_generic_event_t *event); 
 void scwm_handle_button_release(scwm_t *scwm, xcb_generic_event_t *event);
-
+void scwm_handle_motion_notify(scwm_t *scwm, xcb_generic_event_t *event);
 
 typedef struct scwm_event_handlers {
 	int event;
@@ -29,6 +29,7 @@ static scwm_event_handlers_t scwm_handlers[] = {
 	{ XCB_CONFIGURE_REQUEST, scwm_handle_configure_request }, 
 	{ XCB_BUTTON_PRESS, scwm_handle_button_press },
 	{ XCB_BUTTON_RELEASE, scwm_handle_button_release },
+	{ XCB_MOTION_NOTIFY, scwm_handle_motion_notify },
 };
 
 const char *xcb_get_event_name(int event) {
@@ -109,21 +110,52 @@ void scwm_handle_map_request(scwm_t *scwm, xcb_generic_event_t *event) {
 	xcb_map_request_event_t *ev = (void *) event;
 
 	xcb_map_window(scwm->connection, ev->window);
+
+	xcb_grab_button(scwm->connection, 1, ev->window, XCB_EVENT_MASK_BUTTON_PRESS,
+			XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC, XCB_WINDOW_NONE, 
+			XCB_CURSOR_NONE, XCB_BUTTON_INDEX_ANY, XCB_BUTTON_MASK_ANY);
+
 	xcb_flush(scwm->connection);
 }
 
 void scwm_handle_button_press(scwm_t *scwm, xcb_generic_event_t *event) {
+	xcb_button_press_event_t *ev = (void *)event;
 	//Bypass unused warnings
+	printf("%d, %d\n", ev->event, scwm->root);
 	(void)scwm;
-	(void)event;
-
-	//TODO handle press
+	
+	//Grab root window pointer
+	//Now we should get motion events with this window
+	xcb_grab_pointer(scwm->connection, 0, ev->event, XCB_EVENT_MASK_BUTTON_RELEASE |
+			XCB_EVENT_MASK_BUTTON_MOTION | XCB_EVENT_MASK_POINTER_MOTION_HINT,
+			XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, scwm->root, XCB_NONE,
+			ev->time);
+	
+	//Flush to server
+	xcb_flush(scwm->connection);
 }
 
 void scwm_handle_button_release(scwm_t *scwm, xcb_generic_event_t *event) {
-	(void)scwm;
-	(void)event;
-	//TODO handle release
+	xcb_button_release_event_t *ev = (void *)event;
+	
+	xcb_ungrab_pointer(scwm->connection, ev->time);
+	xcb_flush(scwm->connection);
+}
+
+void scwm_handle_motion_notify(scwm_t *scwm, xcb_generic_event_t *event) {
+	uint32_t values[2];
+	xcb_motion_notify_event_t *ev = (void *)event;
+
+	printf("%d %d\n%dx%d\n%d\n", ev->root_x, ev->root_y, ev->event_x, ev->event_y, ev->event);
+	
+	values[0] = ev->root_x;
+	values[1] = ev->root_y;
+
+	xcb_configure_window(scwm->connection, ev->event, XCB_CONFIG_WINDOW_X | 
+			XCB_CONFIG_WINDOW_Y, values);
+	
+
+	xcb_flush(scwm->connection);
 }
 
 void scwm_handle_configure_request(scwm_t *scwm, xcb_generic_event_t *event) {
@@ -206,7 +238,18 @@ scwm_t *scwm_init() {
 	xcb_change_window_attributes(scwm->connection, scwm->root, 
 					XCB_CW_EVENT_MASK, values);
 
-	xcb_flush(scwm->connection);	
+	xcb_ungrab_key(scwm->connection, XCB_GRAB_ANY, scwm->root, XCB_MOD_MASK_ANY);
+	xcb_flush(scwm->connection);
+	
+	xcb_grab_button(scwm->connection, 0, scwm->root,
+			XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE,
+			XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, scwm->root, XCB_NONE,
+			XCB_BUTTON_INDEX_1, XCB_MOD_MASK_1);
+	xcb_grab_button(scwm->connection, 0, scwm->root,
+			XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE,
+			XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, scwm->root, XCB_NONE,
+			XCB_BUTTON_INDEX_3, XCB_MOD_MASK_1);
+	xcb_flush(scwm->connection);
 	return scwm;
 }
 
