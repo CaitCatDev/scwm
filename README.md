@@ -19,5 +19,8 @@ The Unstable branch will be used for all code development before it's been teste
 - The code is more likely to have bugs and flaws such as memory leaks when compaired to master branch 
 - But this code would be the most update commits.
 
+## TRIVA:
+- Commit 8f9e54a "ZOOOOOOM" was more of a meme commit because I was working on resizing to work relative to window rather than making the window pop to the cursor instantly and made a funny bug I wanted to preserve. Because it made me laugh
+
 ## FAQ:
 
