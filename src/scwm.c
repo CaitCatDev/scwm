@@ -12,6 +12,7 @@ struct scwm {
 	xcb_window_t root;
 	xcb_window_t window;
 	int detail;
+	xcb_query_pointer_reply_t *pointer;
 };
 
 void scwm_handle_map_request(scwm_t *scwm, xcb_generic_event_t *event);
@@ -120,14 +121,17 @@ void scwm_handle_button_press(scwm_t *scwm, xcb_generic_event_t *event) {
 	printf("%d, %d\n", ev->child, scwm->root);
 	scwm->window = ev->child;
 	scwm->detail = ev->detail;
-	//Grab root window pointer
+	//Get Pointer details and save for motion functions 
+	xcb_query_pointer_cookie_t ptr_cookie = xcb_query_pointer(scwm->connection, scwm->root);
+	scwm->pointer = xcb_query_pointer_reply(scwm->connection, ptr_cookie, 0); 
+
 	//Now we should get motion events with this window
 	xcb_grab_pointer(scwm->connection, 0, scwm->root, XCB_EVENT_MASK_BUTTON_RELEASE |
 			XCB_EVENT_MASK_BUTTON_MOTION | XCB_EVENT_MASK_POINTER_MOTION_HINT,
 			XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, scwm->root, XCB_NONE,
 			XCB_CURRENT_TIME);
 	
-	//Flush to server
+	
 }
 
 void scwm_handle_button_release(scwm_t *scwm, xcb_generic_event_t *event) {
@@ -138,8 +142,17 @@ void scwm_handle_button_release(scwm_t *scwm, xcb_generic_event_t *event) {
 
 void scwm_handle_motion_notify(scwm_t *scwm, xcb_generic_event_t *event) {
 	uint32_t values[2];
-	xcb_query_pointer_cookie_t ptr_cookie = xcb_query_pointer(scwm->connection, scwm->root);
-	xcb_query_pointer_reply_t *pointer = xcb_query_pointer_reply(scwm->connection, ptr_cookie, 0); 
+	//Safe guard when a user just clicks on the root window
+	if(scwm->window == 0) {
+		return;
+	}
+
+	xcb_get_geometry_cookie_t geom_cookie = xcb_get_geometry(scwm->connection, scwm->window);
+	xcb_get_geometry_reply_t *geom = xcb_get_geometry_reply(scwm->connection,  geom_cookie, NULL);
+
+
+	xcb_query_pointer_cookie_t ptr_cookie = xcb_query_pointer(scwm->connection, scwm->window);
+	xcb_query_pointer_reply_t *pointer = scwm->pointer; 
 	xcb_motion_notify_event_t *ev = (void *)event;
 	
 	printf("%d %d\n%dx%d\n%d\n", ev->root_x, ev->root_y, ev->event_x, ev->event_y, scwm->window);
@@ -148,9 +161,27 @@ void scwm_handle_motion_notify(scwm_t *scwm, xcb_generic_event_t *event) {
 	values[1] = ev->root_y;
 	printf("%d:%d\n", values[0],values[1]);
 	if(scwm->detail == 1) {
+		//use geometry to bound window inside screen 
+		//TODO: at the moment the window pops to the cursor position 
+		//It would be nice to make the window move relative to the cursor 
+		//Rather than just popping to its position 
+		uint16_t testx = geom->x + ev->root_x - pointer->root_x;
+		uint16_t testy = geom->y + ev->root_y - pointer->root_y;
+		values[0] = testx; 
+		values[1] = testy;
+		/*
+		uint16_t geom_x = geom->width;
+		uint16_t geom_y = geom->height;
+		values[0] = ((ev->root_x + geom_x) > scwm->screen->width_in_pixels) ?
+			(scwm->screen->width_in_pixels - geom_x) : ev->root_x;
+		values[1] = ((ev->root_y + geom_y) > scwm->screen->height_in_pixels) ?
+			(scwm->screen->height_in_pixels - geom_y) : ev->root_y;
+		*/
 		xcb_configure_window(scwm->connection, scwm->window, XCB_CONFIG_WINDOW_X | 
 			XCB_CONFIG_WINDOW_Y, values);
 	} else if(scwm->detail == 3) {
+		values[0] = ev->root_x - geom->x;
+		values[1] = ev->root_y - geom->y;
 		xcb_configure_window(scwm->connection, scwm->window, 
 				XCB_CONFIG_WINDOW_HEIGHT | XCB_CONFIG_WINDOW_WIDTH,
 				values);
